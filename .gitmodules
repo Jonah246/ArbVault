@@ -13,3 +13,6 @@
 [submodule "lib/vault-interfaces"]
 	path = lib/vault-interfaces
 	url = https://github.com/yieldprotocol/vault-interfaces
+[submodule "lib/openzeppelin-contracts"]
+	path = lib/openzeppelin-contracts
+	url = https://github.com/openzeppelin/openzeppelin-contracts
