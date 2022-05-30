@@ -11,4 +11,4 @@
 
 # Warning
 This is an experimental project.
-The contracts do not follow security best practices in many places. (e.g. upgradibility, pausable, events)
+The contracts do not follow security best practices in many places.
