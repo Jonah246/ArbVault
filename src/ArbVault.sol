@@ -23,12 +23,15 @@ contract ArbVault is ERC4626, Ownable {
 
     function setStrategy(address _strategy) external onlyOwner {
         require(strategy == address(0), "strategy has set");
+        asset.approve(_strategy, type(uint256).max);
         strategy = _strategy;
     }
 
-    function removeStrategy(address _strategy) external onlyOwner {
-        // TODO: support multiple strategies
-        require(strategy == _strategy);
+    function settleStrategy() external {
+        // dev onlyEOA
+        require(msg.sender == tx.origin);
+        require(block.timestamp > maturity, "!maturity");
+        require(strategy != address(0), "already settle");
         (uint256 profit, uint256 loss) = Strategy(strategy).exit();
         unrealizedLoss += loss;
         unrealizedProfit += profit;
@@ -41,11 +44,14 @@ contract ArbVault is ERC4626, Ownable {
 
     function afterDeposit(uint256 assets, uint256 shares) internal override {
         require(block.timestamp < maturity, "!maturity");
-        _totalToken += assets;
         Strategy(strategy).deposit(assets);
     }
 
     function totalAssets() public override view returns (uint256) {
-        return _totalToken + unrealizedProfit - unrealizedLoss;
+        if (strategy == address(0)) {
+            return asset.balanceOf(address(this));
+        } else {
+            return Strategy(strategy).estimatedAssets();
+        }
     }
 }

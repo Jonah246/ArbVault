@@ -44,4 +44,9 @@ interface ILadle {
         external payable
     returns (uint256 repaid);
 
+        /// @dev Retrieve any token in the Ladle
+    function retrieve(address token, address to)
+        external payable
+        returns (uint256 amount);
+
 }

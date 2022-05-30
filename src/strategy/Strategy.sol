@@ -7,11 +7,9 @@ import { IArbVault } from "../IArbVault.sol";
 import { nERC1155Interface } from "../notional/nERC1155Interface.sol";
 import { ILadle } from "../yieldProtocol/ILadle.sol";
 import { IFlashLoan } from "../interface/IFlashLoan.sol";
-import "ds-test/test.sol";
-
 
 // reference: https://etherscan.io/address/0x253898A4B57615949eE73892bA22b7cFAc17f715#code
-contract Strategy is Ownable, DSTest {
+contract Strategy is Ownable {
     address public immutable nProxy = 0x1344A36A1B56144C3Bc62E7757377D288fDE0369;
     ILadle public immutable ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
 
@@ -37,6 +35,7 @@ contract Strategy is Ownable, DSTest {
     // FYUSDC 2206
     address immutable fytoken = 0x4568bBcf929AB6B4d716F2a3D5A967a1908B4F1C;
     address immutable notionalJoin = 0x62DdD41F8A65B03746656D85b6B2539aE42e23e8;
+    address immutable usdcJoin = 0x0d9A1A773be5a83eEbda23bf98efB8585C3ae4f4;
     bytes6 constant seriesID = bytes4(0x30323036);
     bytes6 constant ilkID = bytes4(0x31350000);
     bytes12 yieldVaultID;
@@ -69,28 +68,33 @@ contract Strategy is Ownable, DSTest {
             asset = underlyingToken.tokenAddress;
             maturity = IArbVault(vault).maturity();
             ERC20(asset).approve(address(nProxy), type(uint256).max);
+            ERC20(asset).approve(usdcJoin, type(uint256).max);
+
             DECIMALS_DIFFERENCE = uint256(underlyingToken.decimals) * MAX_BPS / uint256(assetToken.decimals);
         }
     }
 
     function repayFYDebt(uint256 repayAmount) internal {
+        if(repayAmount == 0) {
+            return;
+        }
+        uint256 previousAmount = ERC20(asset).balanceOf(address(this));
         ERC20(asset).transfer(address(ladle), repayAmount);
-        ladle.closeFromLadle(yieldVaultID, address(this));
+        ladle.close(yieldVaultID, address(this), -int128(int(totalfCash)), -int128(int(repayAmount)));
+        ladle.retrieve(asset, address(this));
+
+        require(ERC20(asset).balanceOf(address(this)) > previousAmount);
     }
 
     function exit() external returns(uint256 loss, uint256 profit) {
         require(msg.sender == vault, "!vault");
-
-
         uint256 currentBalance = ERC20(asset).balanceOf(address(this));
         if (totalFYDebt > currentBalance) {
 
             address[] memory assets = new address[](1);
-            assets[0] =  asset;
             uint256[] memory amounts = new uint256[](1);
+            assets[0] =  asset;
             amounts[0] = totalFYDebt - currentBalance;
-            uint256[] memory modes = new uint256[](2);
-            modes[0] = 0;
 
             flashloanToggle = true;
             IFlashLoan(balancerVault).flashLoan(address(this), assets, amounts, "");
@@ -99,7 +103,6 @@ contract Strategy is Ownable, DSTest {
             repayFYDebt(totalFYDebt);
             totalFYDebt = 0;
         }
-
         AccountContext memory _accountContext = NotionalProxy(nProxy).getAccountContext(address(this));
 
         // If there is something to settle, do it and withdraw to the strategy's balance
@@ -118,6 +121,7 @@ contract Strategy is Ownable, DSTest {
 
     function deposit(uint256 assets) external {
         require(msg.sender == vault, "!vault");
+        ERC20(asset).transferFrom(msg.sender, address(this), assets);
     }
 
     function encodeTrade(
@@ -203,11 +207,10 @@ contract Strategy is Ownable, DSTest {
         if (investAmount > amount) {
             // get total liquidity
             address[] memory assets = new address[](1);
-            assets[0] =  asset;
             uint256[] memory amounts = new uint256[](1);
+
+            assets[0] =  asset;
             amounts[0] = investAmount - amount;
-            uint256[] memory modes = new uint256[](2);
-            modes[0] = 0;
 
             flashloanToggle = true;
             IFlashLoan(balancerVault).flashLoan(address(this), assets, amounts, abi.encode(investAmount, _minfCash, _maxDebt));
@@ -216,6 +219,11 @@ contract Strategy is Ownable, DSTest {
             totalfCash += buyFCash(investAmount, _minfCash);
         }
     }
+
+    function estimatedAssets() external view returns(uint256) {
+        return ERC20(asset).balanceOf(address(this)) + totalfCash * DECIMALS_DIFFERENCE / MAX_BPS - totalFYDebt;
+    }
+
 
     function receiveFlashLoan(
         address[] memory tokens,
@@ -226,17 +234,17 @@ contract Strategy is Ownable, DSTest {
         require(msg.sender == balancerVault, "!vualt");
         require(flashloanToggle);
         uint256 needAmount = amounts[0] + feeAmounts[0];
-        uint256 currentWant = ERC20(asset).balanceOf(address(this));
 
         if (userData.length > 0) {
             (uint256 investAmount, uint128 minFCash, uint128 maxDebt) = abi.decode(userData, (uint256, uint128, uint128));
             uint256 getFCashAmount = buyFCash(investAmount, uint256(minFCash));
+            totalfCash += getFCashAmount;
+            uint256 currentWant = ERC20(asset).balanceOf(address(this));
             if (currentWant < needAmount) {
-                totalfCash += getFCashAmount;
                 totalFYDebt += borrowFromYield(uint128(getFCashAmount), uint128(needAmount - currentWant), maxDebt);
             }
         } else {
-            repayFYDebt(currentWant);
+            repayFYDebt(ERC20(asset).balanceOf(address(this)));
         }
         ERC20(asset).transfer(msg.sender, needAmount);
     }
