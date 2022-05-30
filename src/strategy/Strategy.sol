@@ -7,9 +7,11 @@ import { IArbVault } from "../IArbVault.sol";
 import { nERC1155Interface } from "../notional/nERC1155Interface.sol";
 import { ILadle } from "../yieldProtocol/ILadle.sol";
 import { IFlashLoan } from "../interface/IFlashLoan.sol";
+import "ds-test/test.sol";
+
 
 // reference: https://etherscan.io/address/0x253898A4B57615949eE73892bA22b7cFAc17f715#code
-contract Strategy is Ownable {
+contract Strategy is Ownable, DSTest {
     address public immutable nProxy = 0x1344A36A1B56144C3Bc62E7757377D288fDE0369;
     ILadle public immutable ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
 
@@ -36,7 +38,7 @@ contract Strategy is Ownable {
     address immutable fytoken = 0x4568bBcf929AB6B4d716F2a3D5A967a1908B4F1C;
     address immutable notionalJoin = 0x62DdD41F8A65B03746656D85b6B2539aE42e23e8;
     bytes6 constant seriesID = bytes4(0x30323036);
-    bytes6 constant ilkID = bytes4(0x00003135);
+    bytes6 constant ilkID = bytes4(0x31350000);
     bytes12 yieldVaultID;
 
     // BALANCER
@@ -58,7 +60,7 @@ contract Strategy is Ownable {
         currencyID = _currencyID;
         (Token memory assetToken, Token memory underlyingToken) = NotionalProxy(nProxy).getCurrency(_currencyID);
         //@dev baseAsset unmatched
-        require (underlyingToken.tokenAddress == IArbVault(vault).asset.address);
+        require (underlyingToken.tokenAddress == address(IArbVault(vault).asset()), "asset do not match");
         {
             nERC1155Interface(nProxy).setApprovalForAll(notionalJoin, true);
             (yieldVaultID, ) = ladle.build(seriesID, ilkID, 0);
