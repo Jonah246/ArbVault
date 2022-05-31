@@ -2,7 +2,7 @@
 pragma solidity 0.8.14;
 import { ERC4626, ERC20 } from "solmate/mixins/ERC4626.sol";
 import { Vm } from "forge-std/Vm.sol";
-import { ArbVault } from "../ArbVault.sol";
+import { ArbVault, WrongMaturity } from "../ArbVault.sol";
 import { Strategy } from "../strategy/Strategy.sol";
 import { console } from "forge-std/console.sol";
 import { TestUtils } from "./utils.sol";
@@ -14,7 +14,7 @@ Vm constant VM = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
 contract ArbVaultTest is DSTest, TestUtils {
     ArbVault vault;
     Strategy strategy;
-    uint256 constant depositAmount = 5000 * 10**6;
+    uint256 constant depositAmount = 3000 * 10**6;
     address user;
 
     function setUp() public {
@@ -49,7 +49,7 @@ contract ArbVaultTest is DSTest, TestUtils {
 
         VM.prank(userA);
         // marturity
-        VM.expectRevert("!maturity");
+        VM.expectRevert(WrongMaturity.selector);
         vault.redeem(shareAmount, userA, userA);
 
         VM.warp(vault.maturity() + 100);
@@ -63,25 +63,30 @@ contract ArbVaultTest is DSTest, TestUtils {
         uint256 shareAmount = _depositFromUser(userA, depositAmount);
         uint256 strategyAmount = USDC.balanceOf(address(strategy));
         strategy.invest(strategyAmount, 0, 0);
+        console.log("total assets", strategy.estimatedAssets());
 
         VM.warp(vault.maturity() + 100);
         VM.prank(tx.origin);
         vault.settleStrategy();
 
         (, uint256 getAmount) = _withdrawAllFromUser(userA);
+        console.log("getAmount: ", getAmount);
+
         assertTrue(getAmount > depositAmount, "should profit");
     }
 
     function testInvestWithFlashloan() public {
         uint256 shareAmount = _depositFromUser(userA, depositAmount);
         uint256 strategyAmount = USDC.balanceOf(address(strategy));
-        strategy.invest(strategyAmount * 350 / 100, 0, uint128(strategyAmount * 350 / 100));
+        strategy.invest(strategyAmount * 1100 / 100, 0, uint128(strategyAmount * 1100 / 100));
+        console.log("total assets", strategy.estimatedAssets());
 
         VM.warp(vault.maturity() + 100);
         VM.prank(tx.origin);
         vault.settleStrategy();
 
         (, uint256 getAmount) = _withdrawAllFromUser(userA);
+        console.log("getAmount: ", getAmount);
         assertTrue(getAmount > depositAmount, "should profit");
     }
 

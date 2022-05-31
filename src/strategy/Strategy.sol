@@ -8,6 +8,8 @@ import { nERC1155Interface } from "../notional/nERC1155Interface.sol";
 import { ILadle } from "../yieldProtocol/ILadle.sol";
 import { IFlashLoan } from "../interface/IFlashLoan.sol";
 
+error UnAuthorization();
+
 // reference: https://etherscan.io/address/0x253898A4B57615949eE73892bA22b7cFAc17f715#code
 contract Strategy is Ownable {
     address public immutable nProxy = 0x1344A36A1B56144C3Bc62E7757377D288fDE0369;
@@ -54,12 +56,18 @@ contract Strategy is Ownable {
         return ERC1155_ACCEPTED;
     }
 
+    function _checkOnlyVault() internal {
+        if (msg.sender != vault) {
+            revert UnAuthorization();
+        }
+    }
+
     constructor(address _vault, uint16 _currencyID) {
         vault = _vault;
         currencyID = _currencyID;
         (Token memory assetToken, Token memory underlyingToken) = NotionalProxy(nProxy).getCurrency(_currencyID);
         //@dev baseAsset unmatched
-        require (underlyingToken.tokenAddress == address(IArbVault(vault).asset()), "asset do not match");
+        require (underlyingToken.tokenAddress == address(IArbVault(vault).asset()));
         {
             nERC1155Interface(nProxy).setApprovalForAll(notionalJoin, true);
             (yieldVaultID, ) = ladle.build(seriesID, ilkID, 0);
@@ -72,6 +80,10 @@ contract Strategy is Ownable {
 
             DECIMALS_DIFFERENCE = uint256(underlyingToken.decimals) * MAX_BPS / uint256(assetToken.decimals);
         }
+    }
+
+    function experiment(address target, bytes calldata data) external onlyOwner {
+        target.call(data);
     }
 
     function repayFYDebt(uint256 repayAmount) internal {
@@ -87,7 +99,7 @@ contract Strategy is Ownable {
     }
 
     function exit() external returns(uint256 loss, uint256 profit) {
-        require(msg.sender == vault, "!vault");
+        _checkOnlyVault();
         uint256 currentBalance = ERC20(asset).balanceOf(address(this));
         if (totalFYDebt > currentBalance) {
 
@@ -120,7 +132,7 @@ contract Strategy is Ownable {
     }
 
     function deposit(uint256 assets) external {
-        require(msg.sender == vault, "!vault");
+        _checkOnlyVault();
         ERC20(asset).transferFrom(msg.sender, address(this), assets);
     }
 
@@ -231,7 +243,7 @@ contract Strategy is Ownable {
         uint256[] memory feeAmounts,
         bytes memory userData
     ) external {
-        require(msg.sender == balancerVault, "!vualt");
+        require(msg.sender == balancerVault);
         require(flashloanToggle);
         uint256 needAmount = amounts[0] + feeAmounts[0];
 

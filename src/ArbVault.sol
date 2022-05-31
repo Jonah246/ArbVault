@@ -4,6 +4,7 @@ import { ERC4626, ERC20 } from "solmate/mixins/ERC4626.sol";
 import { Ownable } from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import { Strategy } from "./strategy/Strategy.sol";
 import { IArbVault } from "./IArbVault.sol";
+error WrongMaturity();
 
 contract ArbVault is ERC4626, Ownable {
     uint256 public immutable maturity;
@@ -17,21 +18,33 @@ contract ArbVault is ERC4626, Ownable {
         string memory _symbol,
         uint256 _maturity
     ) ERC4626(_asset, _name, _symbol) {
-        require(_maturity > block.timestamp, "invalid maturity");
+        require(_maturity > block.timestamp);
         maturity = _maturity;
     }
 
     function setStrategy(address _strategy) external onlyOwner {
-        require(strategy == address(0), "strategy has set");
+        require(strategy == address(0));
         asset.approve(_strategy, type(uint256).max);
         strategy = _strategy;
+    }
+
+    function _checkAfterMaturity() internal {
+        if (block.timestamp <= maturity) {
+            revert WrongMaturity();
+        }
+    }
+
+    function _checkBeforeMaturity() internal {
+        if (block.timestamp > maturity) {
+            revert WrongMaturity();
+        }
     }
 
     function settleStrategy() external {
         // dev onlyEOA
         require(msg.sender == tx.origin);
-        require(block.timestamp > maturity, "!maturity");
-        require(strategy != address(0), "already settle");
+        require(strategy != address(0));
+        _checkAfterMaturity();
         (uint256 profit, uint256 loss) = Strategy(strategy).exit();
         unrealizedLoss += loss;
         unrealizedProfit += profit;
@@ -39,11 +52,11 @@ contract ArbVault is ERC4626, Ownable {
     }
 
     function beforeWithdraw(uint256 assets, uint256 shares) internal override {
-        require(block.timestamp > maturity, "!maturity");
+        _checkAfterMaturity();
     }
 
     function afterDeposit(uint256 assets, uint256 shares) internal override {
-        require(block.timestamp < maturity, "!maturity");
+        _checkBeforeMaturity();
         Strategy(strategy).deposit(assets);
     }
 
