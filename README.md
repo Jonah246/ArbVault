@@ -12,6 +12,25 @@
 
 **30% APY on fixed interest rate** 
 
+# Test and deploy
+
+Step 1: install foundry. For detailed instructions, please refer to [foundry](https://github.com/foundry-rs/foundry) 
+
+First run the command below to get foundryup, the Foundry toolchain installer:
+```
+> curl -L https://foundry.paradigm.xyz | bash
+> foundryup
+```
+Step 2:
+```
+forge install
+```
+Step 3:
+
+```
+forge test
+```
+
 # Future works
 
 * auto renewal
